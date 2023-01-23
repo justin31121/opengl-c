@@ -56,17 +56,10 @@ int main() {
 
   //BETTER INIT
   Open_Renderer or;
-  if(!open_renderer_init(&or, "./simple.vert", "./simple_color.frag", "./simple_image.frag")) {
+  if(!open_renderer_init(&or)) {
     panic("open_renderer_init");
   }
 
-  //MONKAS
-  int x, y, comp;
-  char *data = (char *) stbi_load("./monka.png", &x, &y, &comp, 0);
-  if(!data) {
-    panic("Failed to load monka.png");
-  }
-  
   GLuint texture = 0;
   glActiveTexture(GL_TEXTURE0);
   glGenTextures(1, &texture);
@@ -78,19 +71,81 @@ int main() {
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
   glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+  
+  //MONKAS
+  int x, y;
+  char *data = (char *) stbi_load("./monka2.jpg", &x, &y, NULL, 4);
+  if(!data) {
+    panic("Failed to load monka2.jpg");
+  }
+
+  printf("Loaded monka2.jpg (%d, %d)\n", x, y);
+
+  
+  int x2, y2;
+  char *data2 = (char *) stbi_load("./poggers.png", &x2, &y2, NULL, 4);
+  if(!data2) {
+    panic("Failed to load poggers.png");
+  }
+
+  printf("Loaded poggers.png (%d, %d)\n", x2, y2);
+
+  
+
+  /*
+  for(int i=0;i<x;i++) {
+    for(int j=0;j<y;j++) {
+      uint32_t pixel = data[j*y+i];
+      uint8_t r = (pixel & 0xff) >> 6;
+      uint8_t g = (pixel & 0x00ff) >> 4;
+      uint8_t b = (pixel & 0x0000ff) >> 2;
+      uint8_t a = pixel & 0x000000ff;
+
+      //printf("%u %u %u %u\n", r, g, b, a);
+    }
+  }
+  */
+  
   glTexImage2D(
 	       GL_TEXTURE_2D,
 	       0,
 	       GL_RGBA,
-	       x,
-	       y,
+	       x + x2,
+	       (y > y2 ? y : y2),
 	       0,
 	       GL_RGBA,
 	       GL_UNSIGNED_INT_8_8_8_8_REV,
-	       data);
+	       NULL);
+  
+  glTexSubImage2D(GL_TEXTURE_2D,
+	0,
+	0,
+	0,
+	x,
+	y,
+	GL_RGBA,
+	GL_UNSIGNED_INT_8_8_8_8_REV,
+	data);
+
+  glTexSubImage2D(GL_TEXTURE_2D,
+	0,
+	x,
+	0,
+	x2,
+	y2,
+	GL_RGBA,
+	GL_UNSIGNED_INT_8_8_8_8_REV,
+	data2);
+
+  stbi_image_free(data);
+  stbi_image_free(data2);
 
   SDL_Event event;
   bool quit = false;
+
+  Vec2f pos = vec2f(0.f, 0.f);
+  Vec2f vel = vec2f(200, 100);
+  Vec2f size = vec2fs(150); 
   
   while(!quit) {
     SDL_PollEvent(&event);
@@ -108,7 +163,10 @@ int main() {
       }
       break;
     }
-    }
+    }    
+
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glEnable( GL_BLEND );
 
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
@@ -118,12 +176,28 @@ int main() {
       SDL_GetWindowSize(window, &w, &h);
       
       or.resolution = vec2i(w, h);
-      open_renderer_set_shader(&or, SHADER_FOR_IMAGE);     
+      float now = (float) SDL_GetTicks() / 1000.0f;
+      float dt = now - or.time;
+      or.time = now;
 
-      Vec2f uvp = vec2fs(0);
-      Vec2f uvs = vec2f(1, 1);
-      open_renderer_image_rect(&or, vec2f(0, 0), vec2f(WIDTH, HEIGHT), uvp, uvs);
+      pos = vec2f_add(pos, vec2f_mul(vel, vec2fs(dt)));
 
+      if(pos.x + size.x >= (float) w || pos.x < 0.f) {
+	vel.x *= -1;
+      }
+      if(pos.y + size.y>= (float) h || pos.y < 0.f) {
+	vel.y *= -1;
+      }
+
+      // -- IMAGE
+      open_renderer_set_shader(&or, SHADER_FOR_IMAGE);
+      open_renderer_image_rect(&or, vec2fs(0), vec2f(w, h), vec2fs(0), vec2f((float) x / (float) (x+x2), (float) 1));
+      open_renderer_image_rect(&or, pos, size, vec2f((float) x / (float) (x+x2), 0),vec2f((float) x2 / (float) (x+x2), (float) y2 / (float) y));
+      open_renderer_flush(&or);
+
+      // -- COLOR
+      open_renderer_set_shader(&or, SHADER_FOR_COLOR);      
+      open_renderer_solid_rect(&or, vec2f(100, 100), vec2f(100, 100), vec4f(1.0, 0.0, 0.0, 1.0));
       open_renderer_flush(&or);
     }
 
@@ -131,7 +205,6 @@ int main() {
     SDL_GL_SwapWindow(window);
   }
 
-  stbi_image_free(data);
   SDL_DestroyWindow(window);
   SDL_Quit();
   
