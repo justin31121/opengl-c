@@ -24,6 +24,15 @@ typedef struct{
   Vec2f uv;
 }Vertex;
 
+Open_Texture load_texture_from_file(const char *file_path) {
+  Open_Texture result = {0};
+  result.data = (char *) stbi_load(file_path, &result.width, &result.height, NULL, 4);
+  if(!result.data) {
+    panic("Failed to load image");
+  }
+  return result;
+}
+
 int main() {
   if(SDL_Init(SDL_INIT_VIDEO) < 0) {
     fprintf(stderr, "SDL_Error: %s\n", SDL_GetError());
@@ -59,86 +68,17 @@ int main() {
   if(!open_renderer_init(&or)) {
     panic("open_renderer_init");
   }
-
-  GLuint texture = 0;
-  glActiveTexture(GL_TEXTURE0);
-  glGenTextures(1, &texture);
-  glBindTexture(GL_TEXTURE_2D, texture);
-
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-  glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
   
   //MONKAS
-  int x, y;
-  char *data = (char *) stbi_load("./monka2.jpg", &x, &y, NULL, 4);
-  if(!data) {
-    panic("Failed to load monka2.jpg");
-  }
-
-  printf("Loaded monka2.jpg (%d, %d)\n", x, y);
-
+  Open_Texture monka_texture = load_texture_from_file("monka2.jpg");
+  size_t monka = open_renderer_push_image(&or, monka_texture);
   
-  int x2, y2;
-  char *data2 = (char *) stbi_load("./poggers.png", &x2, &y2, NULL, 4);
-  if(!data2) {
-    panic("Failed to load poggers.png");
-  }
+  //POGGERS
+  Open_Texture poggers_texture = load_texture_from_file("poggers.png");
+  size_t poggers = open_renderer_push_image(&or, poggers_texture); 
 
-  printf("Loaded poggers.png (%d, %d)\n", x2, y2);
-
-  
-
-  /*
-  for(int i=0;i<x;i++) {
-    for(int j=0;j<y;j++) {
-      uint32_t pixel = data[j*y+i];
-      uint8_t r = (pixel & 0xff) >> 6;
-      uint8_t g = (pixel & 0x00ff) >> 4;
-      uint8_t b = (pixel & 0x0000ff) >> 2;
-      uint8_t a = pixel & 0x000000ff;
-
-      //printf("%u %u %u %u\n", r, g, b, a);
-    }
-  }
-  */
-  
-  glTexImage2D(
-	       GL_TEXTURE_2D,
-	       0,
-	       GL_RGBA,
-	       x + x2,
-	       (y > y2 ? y : y2),
-	       0,
-	       GL_RGBA,
-	       GL_UNSIGNED_INT_8_8_8_8_REV,
-	       NULL);
-  
-  glTexSubImage2D(GL_TEXTURE_2D,
-	0,
-	0,
-	0,
-	x,
-	y,
-	GL_RGBA,
-	GL_UNSIGNED_INT_8_8_8_8_REV,
-	data);
-
-  glTexSubImage2D(GL_TEXTURE_2D,
-	0,
-	x,
-	0,
-	x2,
-	y2,
-	GL_RGBA,
-	GL_UNSIGNED_INT_8_8_8_8_REV,
-	data2);
-
-  stbi_image_free(data);
-  stbi_image_free(data2);
+  stbi_image_free(monka_texture.data);
+  stbi_image_free(poggers_texture.data);
 
   SDL_Event event;
   bool quit = false;
@@ -189,13 +129,16 @@ int main() {
 	vel.y *= -1;
       }
 
-      // -- IMAGE
-      open_renderer_set_shader(&or, SHADER_FOR_IMAGE);
-      open_renderer_image_rect(&or, vec2fs(0), vec2f(w, h), vec2fs(0), vec2f((float) x / (float) (x+x2), (float) 1));
-      open_renderer_image_rect(&or, pos, size, vec2f((float) x / (float) (x+x2), 0),vec2f((float) x2 / (float) (x+x2), (float) y2 / (float) y));
+      or.image = monka;
+      open_renderer_set_shader(&or, SHADER_FOR_RIPPLE);
+      open_renderer_image_rect(&or, vec2fs(0), vec2f(w, h), vec2fs(0), vec2f(1, 1));
       open_renderer_flush(&or);
 
-      // -- COLOR
+      or.image = poggers;
+      open_renderer_set_shader(&or, SHADER_FOR_IMAGE);
+      open_renderer_image_rect(&or, pos, size, vec2fs(0), vec2f(1, 1));
+      open_renderer_flush(&or);
+
       open_renderer_set_shader(&or, SHADER_FOR_COLOR);      
       open_renderer_solid_rect(&or, vec2f(100, 100), vec2f(100, 100), vec4f(1.0, 0.0, 0.0, 1.0));
       open_renderer_flush(&or);
@@ -203,7 +146,7 @@ int main() {
 
     //END RENDER
     SDL_GL_SwapWindow(window);
-  }
+  }  
 
   SDL_DestroyWindow(window);
   SDL_Quit();
