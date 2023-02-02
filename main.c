@@ -37,31 +37,26 @@ Open_Texture load_texture_from_file(const char *file_path) {
   return result;
 }
 
-#define FONT_HEIGHT 80
+#define FONT_HEIGHT 128
 #define ASCII_VALS (127-32)
 
-uint32_t ascii[ASCII_VALS][FONT_HEIGHT * FONT_HEIGHT];
-
-uint32_t ascii2[ASCII_VALS * FONT_HEIGHT * FONT_HEIGHT];
+unsigned char ascii2[ASCII_VALS * FONT_HEIGHT * FONT_HEIGHT];
 int ascii_w[ASCII_VALS];
 int ascii_h[ASCII_VALS];
 int ascii_x[ASCII_VALS];
 int ascii_y[ASCII_VALS];
 
 stbtt_fontinfo font;
-float scale;
-float font_height_max;
 
 Open_Texture font_texture = {0};
 unsigned char ttf_buffer[1<<25] = {0};
 
 void prepare_font() {
-  font_height_max = 0.f;
   fread(ttf_buffer, 1, 1<<25, fopen("/usr/share/fonts/truetype/iosevka/iosevka-regular.ttf", "rb"));
   
   stbtt_InitFont(&font, ttf_buffer, 0);
 
-  scale = stbtt_ScaleForPixelHeight(&font, FONT_HEIGHT);
+  float scale = stbtt_ScaleForPixelHeight(&font, FONT_HEIGHT);
 
   for(int c=32;c<=126;c++) {
     int w, h, x ,y;
@@ -76,43 +71,41 @@ void prepare_font() {
       for (int i=0; i < FONT_HEIGHT; ++i) {
 	if(i<w && j<h) {
 	  unsigned char d = bitmap[j*w+i];
-	  if(d) {
-	    ascii2[j*ascii_width+glyph_off+i] = 0xff000000 | (d<<0*8) | (d<<1*8) | (d<<2*8);
-	    continue;
-	  }
+	  ascii2[j*ascii_width+glyph_off+i] = d;
+	} else {
+	  ascii2[j*ascii_width+glyph_off+i] = 0x00;	  
 	}
-	ascii2[j*ascii_width+glyph_off+i] = 0x00ff1818;
       }
     }
     ascii_w[c-32] = w;
     ascii_h[c-32] = h;
-
-    if(font_height_max < h) font_height_max = h;
     
     stbtt_FreeBitmap(bitmap, font.userdata);
   }
 }
 
 void render_line(Open_Renderer *or, const char *word, Vec2f pos) {
-  
+  float factor = .5f;
+
   size_t word_len = strlen(word);
   for(size_t i=0;i<word_len;i++) {
     char c = word[i];
     if(c == ' ') {
-      pos.x += (float) 20.f;
+      pos.x += factor * FONT_HEIGHT / 2.f;
       continue;
     }
     
     float char_width = (float) ascii_w[c - 32] / (float) font_texture.width;
-    float char_off = (float) (c - 32) * (float) FONT_HEIGHT / (float) font_texture.width;
-	
-    float factor = 1.f;
-    Vec2f c_size = vec2f(factor * (float) ascii_w[c-32], factor * font_height_max);    
+    float char_off = (float) (c - 32) * (float) FONT_HEIGHT / (float) font_texture.width;	
+    
+    Vec2f c_size = vec2f(factor * (float) ascii_w[c-32], factor * FONT_HEIGHT);
 
-    pos.x += (float) ascii_x[c-32];
+    pos.x += factor * (float) ascii_x[c-32];
     if(pos.x >= WIDTH) break;
 	
-    open_renderer_image_rect(or, vec2f(pos.x, pos.y + (float) ascii_y[c -32]), c_size, vec2f(char_off, 0), vec2f(char_width, 1));
+    open_renderer_text_rect(or, vec2f(pos.x, pos.y + factor * (float) ascii_y[c -32]), c_size,
+			    vec2f(char_off, 0), vec2f(char_width, 1),
+			    vec4f(0, 0, 0, 1));
     if(i!=word_len - 1) pos.x += c_size.x;
   }
 }
@@ -155,12 +148,12 @@ int main() {
   
   //MONKAS
   Open_Texture monka_texture = load_texture_from_file("monka2.jpg");
-  size_t monka = open_renderer_push_image(&or, monka_texture);
+  size_t monka = open_renderer_push_texture(&or, monka_texture);
   (void) monka;
   
   //POGGERS
   Open_Texture poggers_texture = load_texture_from_file("poggers.png");
-  size_t poggers = open_renderer_push_image(&or, poggers_texture);
+  size_t poggers = open_renderer_push_texture(&or, poggers_texture);
   (void) poggers;  
 
   stbi_image_free(monka_texture.data);
@@ -170,7 +163,8 @@ int main() {
   font_texture.width = ASCII_VALS * FONT_HEIGHT;
   font_texture.height = FONT_HEIGHT;
   font_texture.data = (char *) ascii2;
-  size_t font_index = open_renderer_push_image(&or, font_texture);
+  font_texture.grey = true;
+  size_t font_index = open_renderer_push_texture(&or, font_texture);
 
   SDL_Event event;
   bool quit = false;
@@ -218,14 +212,8 @@ int main() {
       (void) dt;
       or.time = now;
 
-      or.image = font_index;
-      open_renderer_set_shader(&or, SHADER_FOR_IMAGE);
-      float height = (float) font_height_max;
-      render_line(&or, "hello World, yoyoyoyoyooy !", vec2f(0, height));
-      render_line(&or, "Was geht ab ", vec2f(0, 2.0f * height));
-      open_renderer_flush(&or);
+      
 
-      /*
       pos = vec2f_add(pos, vec2f_mul(vel, vec2fs(dt)));
       if(pos.x + size.x >= (float) w || pos.x < 0.f) {
 	vel.x *= -1;
@@ -247,7 +235,12 @@ int main() {
       open_renderer_set_shader(&or, SHADER_FOR_COLOR);      
       open_renderer_solid_rect(&or, vec2f(100, 100), vec2f(100, 100), vec4f(1.0, 0.0, 0.0, 1.0));
       open_renderer_flush(&or);
-      */
+
+      or.image = font_index;
+      open_renderer_set_shader(&or, SHADER_FOR_TEXT);
+      render_line(&or, "hello World, yoyoyoyoyooy !", vec2f(0, FONT_HEIGHT));
+      render_line(&or, "Was geht", vec2f(0, 2.0f * FONT_HEIGHT));
+      open_renderer_flush(&or);
     }
 
     //END RENDER
