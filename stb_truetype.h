@@ -4750,7 +4750,7 @@ STBTT_DEF unsigned char * stbtt_GetGlyphSDF(const stbtt_fontinfo *info, float sc
                val = 255;
             data[(y-iy0)*w+(x-ix0)] = (unsigned char) val;
          }
-      }
+      }      
       STBTT_free(precompute, info->userdata);
       STBTT_free(verts, info->userdata);
    }
